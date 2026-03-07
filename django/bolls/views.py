@@ -279,6 +279,10 @@ def v2_search(request, translation):
 
 
 def sign_up(request):
+    # Check if signup is disabled via environment variable
+    if os.environ.get("DISABLE_SIGNUP", "").lower() in ("true", "1", "yes"):
+        return HttpResponse("Sign up is disabled.", status=403)
+
     if request.method == "POST":
         form = SignUpForm(request.POST)
         if form.is_valid():

@@ -46,10 +46,14 @@ RUN mkdir $BOLLS_HOME/static
 WORKDIR $BOLLS_HOME
 
 # install dependencies
-RUN apt update -y && apt install -y netcat-traditional unzip
+RUN apt update -y && apt install -y netcat-traditional unzip curl
 COPY --from=builder /usr/src/bolls/wheels /wheels
 COPY --from=builder /usr/src/bolls/requirements.txt .
 RUN pip install --no-cache /wheels/*
+
+# Copy Bible translation data (144 translations, ~1.1GB)
+# These are pre-downloaded JSON files from Bolls.life API
+COPY ./data/translations/ /app/data/translations/
 
 # copy entrypoint.sh
 COPY ./entrypoint.sh $BOLLS_HOME
