@@ -156,7 +156,6 @@ class Command(BaseCommand):
                     chapter=item.get("chapter"),
                     verse=item.get("verse"),
                     text=item.get("text", "").strip(),
-                    comment=item.get("comment", ""),
                 ))
             except (ValueError, KeyError):
                 pass
