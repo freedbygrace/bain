@@ -820,6 +820,10 @@ def api(request):
     return render(request, "bolls/api.html")
 
 
+def swagger(request):
+    return render(request, "bolls/swagger.html")
+
+
 def handler404(request, *args, **argv):
     response = render("404.html", {}, context_instance=RequestContext(request))
     response.status_code = 404
@@ -958,6 +962,28 @@ def get_dictionary(_, dictionary):
         d.append(serialized_definition)
 
     return cross_origin(JsonResponse(d, safe=False))
+
+
+def get_translations(_):
+    """Return list of available translation codes with metadata."""
+    # Get translations that actually have data in the database
+    db_translations = set(
+        Verses.objects.values_list("translation", flat=True).distinct()
+    )
+
+    # Return translations that exist in both BOOKS config and database
+    result = []
+    for code in sorted(BOOKS.keys()):
+        if code in db_translations:
+            books = BOOKS[code]
+            result.append({
+                "code": code,
+                "books": len(books),
+                "has_ot": any(b.get("bookid", 0) <= 39 for b in books),
+                "has_nt": any(b.get("bookid", 0) >= 40 for b in books),
+            })
+
+    return cross_origin(JsonResponse(result, safe=False))
 
 
 def get_books(_, translation):

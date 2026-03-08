@@ -9,8 +9,8 @@ FROM python AS builder
 WORKDIR /usr/src/bolls
 
 # set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # install psycopg2 dependencies
 RUN apt update -y \
@@ -35,8 +35,8 @@ FROM python
 RUN mkdir -p /home/bolls
 
 # create the bolls user
-RUN addgroup bolls
-RUN adduser --group $bolls bollsuser
+RUN addgroup --system bolls \
+    && adduser --system --ingroup bolls bollsuser
 
 # create the appropriate directories
 ENV HOME=/home/bolls
@@ -55,6 +55,9 @@ RUN pip install --no-cache /wheels/*
 # These are pre-downloaded JSON files from Bolls.life API
 COPY ./data/translations/ /app/data/translations/
 
+# Copy dictionary data (Strong's Hebrew/Greek definitions, ~40MB)
+COPY ./data/dictionaries/ /app/data/dictionaries/
+
 # copy entrypoint.sh
 COPY ./entrypoint.sh $BOLLS_HOME
 
@@ -62,11 +65,10 @@ COPY ./entrypoint.sh $BOLLS_HOME
 COPY . $BOLLS_HOME
 
 # chown all the files to the bolls user
-RUN chown -R $bollsuser:$bolls $BOLLS_HOME
-# RUN chown $bollsuser:$bolls $DAPHNE
+RUN chown -R bollsuser:bolls $BOLLS_HOME
 
 # change to the bolls user
-USER $bollsuser
+USER bollsuser
 
 # run entrypoint.sh
 ENTRYPOINT ["/home/bolls/web/entrypoint.sh"]

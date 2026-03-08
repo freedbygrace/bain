@@ -7,6 +7,7 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("signup/", views.sign_up, name="signup"),
     path("api/", views.api),
+    path("swagger/", views.swagger),
     path("history/", views.history),
     path("v2/history/", views.history_v2),
     path("save-bookmarks/", views.save_bookmarks),
@@ -36,6 +37,7 @@ urlpatterns = [
     path("find/<slug:translation>/<str:piece>/", views.search),
     path("find/<slug:translation>/", views.search),
     path("v2/find/<slug:translation>", views.v2_search),
+    path("get-translations/", views.get_translations),
     path("get-books/<slug:translation>/", views.get_books),
     path("get-text/<slug:translation>/<slug:book>/<int:chapter>/", views.get_text),
     path(

@@ -8,6 +8,20 @@ then
     echo "PostgreSQL started"
 fi
 
+# Create PostgreSQL extensions required for dictionary search
+echo "Ensuring PostgreSQL extensions..."
+python -c "
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bain.settings')
+import django
+django.setup()
+from django.db import connection
+with connection.cursor() as cursor:
+    cursor.execute('CREATE EXTENSION IF NOT EXISTS pg_trgm;')
+    cursor.execute('CREATE EXTENSION IF NOT EXISTS unaccent;')
+print('Extensions ready: pg_trgm, unaccent')
+" 2>/dev/null || echo "Warning: Could not create extensions"
+
 # Run migrations on every startup (safe - Django handles idempotency)
 echo "Running database migrations..."
 python manage.py migrate --noinput
@@ -33,6 +47,24 @@ if [ "$VERSE_COUNT" = "0" ] || [ -z "$VERSE_COUNT" ]; then
     echo "Bible data seeding complete!"
 else
     echo "Bible data already present (YLT: $VERSE_COUNT verses). Skipping seed."
+fi
+
+# Seed dictionary data if database is empty
+DICT_COUNT=$(python -c "
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'bain.settings')
+import django
+django.setup()
+from bolls.models import Dictionary
+print(Dictionary.objects.count())
+" 2>/dev/null || echo "0")
+
+if [ "$DICT_COUNT" = "0" ] || [ -z "$DICT_COUNT" ]; then
+    echo "Dictionary data not found. Seeding dictionaries (BDBT, RUSD, SCGES)..."
+    python manage.py seed_dictionary
+    echo "Dictionary seeding complete!"
+else
+    echo "Dictionary data already present ($DICT_COUNT entries). Skipping seed."
 fi
 
 # Bootstrap superuser from environment variables if provided

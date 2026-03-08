@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bain Bible API - Swagger UI</title>
+  <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html { box-sizing: border-box; overflow-y: scroll; }
+    *, *:before, *:after { box-sizing: inherit; }
+    body { margin: 0; background: #fafafa; }
+    .swagger-ui .topbar { display: none; }
+    .swagger-ui .info { margin: 30px 0; }
+    .swagger-ui .info .title { font-size: 2rem; }
+    .header-bar {
+      background: #1b1b1b;
+      padding: 15px 20px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .header-bar a { color: #fff; text-decoration: none; font-size: 1.2rem; }
+    .header-bar a:hover { text-decoration: underline; }
+    .nav-links { margin-left: auto; display: flex; gap: 20px; }
+    .nav-links a { color: #89bf04; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="header-bar">
+    <a href="/">🕮 Bain Bible</a>
+    <div class="nav-links">
+      <a href="/api/">HTML Docs</a>
+      <a href="/static/bolls/openapi.json" target="_blank">OpenAPI JSON</a>
+      <a href="/admin/">Admin</a>
+    </div>
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function() {
+      const ui = SwaggerUIBundle({
+        url: "/static/bolls/openapi.json",
+        dom_id: '#swagger-ui',
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        layout: "StandaloneLayout",
+        deepLinking: true,
+        showExtensions: true,
+        showCommonExtensions: true
+      });
+      window.ui = ui;
+    };
+  </script>
+</body>
+</html>
+

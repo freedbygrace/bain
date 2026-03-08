@@ -1,0 +1,354 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Bain Bible API",
+    "description": "REST API for accessing Bible translations, search, and study tools. Based on Bolls.life.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "GitHub Repository",
+      "url": "https://github.com/freedbygrace/bain"
+    }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Current server"
+    }
+  ],
+  "paths": {
+    "/get-translations/": {
+      "get": {
+        "summary": "List available translations",
+        "description": "Returns a list of all translation codes that have data available in the database, along with metadata about each translation.",
+        "tags": ["Discovery"],
+        "responses": {
+          "200": {
+            "description": "List of available translations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "code": { "type": "string", "description": "Translation code (e.g., YLT, ESV, NIV)" },
+                      "books": { "type": "integer", "description": "Number of books in this translation" },
+                      "has_ot": { "type": "boolean", "description": "Whether Old Testament books are included" },
+                      "has_nt": { "type": "boolean", "description": "Whether New Testament books are included" }
+                    }
+                  }
+                },
+                "example": [
+                  { "code": "ESV", "books": 66, "has_ot": true, "has_nt": true },
+                  { "code": "YLT", "books": 66, "has_ot": true, "has_nt": true }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-books/{translation}/": {
+      "get": {
+        "summary": "Get books list",
+        "description": "Returns the list of books available in a translation with chapter counts.",
+        "tags": ["Bible Data"],
+        "parameters": [
+          {
+            "name": "translation",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "example": "YLT"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of books",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "bookid": { "type": "integer" },
+                      "chronorder": { "type": "integer" },
+                      "name": { "type": "string" },
+                      "chapters": { "type": "integer" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-text/{translation}/{book}/{chapter}/": {
+      "get": {
+        "summary": "Get chapter text",
+        "description": "Fetch all verses of a chapter without commentaries.",
+        "tags": ["Bible Data"],
+        "parameters": [
+          {
+            "name": "translation",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "example": "ESV"
+          },
+          {
+            "name": "book",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "example": 1
+          },
+          {
+            "name": "chapter",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of verses",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Verse" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-chapter/{translation}/{book}/{chapter}/": {
+      "get": {
+        "summary": "Get chapter with commentaries",
+        "description": "Fetch all verses of a chapter including commentaries if available.",
+        "tags": ["Bible Data"],
+        "parameters": [
+          {
+            "name": "translation",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "example": "NKJV"
+          },
+          {
+            "name": "book",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "example": 22
+          },
+          {
+            "name": "chapter",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" },
+            "example": 8
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of verses with optional comments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/VerseWithComment" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-verse/{translation}/{book}/{chapter}/{verse}/": {
+      "get": {
+        "summary": "Get single verse",
+        "description": "Fetch a single verse by its coordinates.",
+        "tags": ["Bible Data"],
+        "parameters": [
+          { "name": "translation", "in": "path", "required": true, "schema": { "type": "string" }, "example": "NIV" },
+          { "name": "book", "in": "path", "required": true, "schema": { "type": "integer" }, "example": 1 },
+          { "name": "chapter", "in": "path", "required": true, "schema": { "type": "integer" }, "example": 1 },
+          { "name": "verse", "in": "path", "required": true, "schema": { "type": "integer" }, "example": 1 }
+        ],
+        "responses": { "200": { "description": "Single verse", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Verse" } } } } }
+      }
+    },
+    "/get-random-verse/{translation}/": {
+      "get": {
+        "summary": "Get random verse",
+        "description": "Returns a random verse from the specified translation.",
+        "tags": ["Bible Data"],
+        "parameters": [
+          { "name": "translation", "in": "path", "required": true, "schema": { "type": "string" }, "example": "YLT" }
+        ],
+        "responses": { "200": { "description": "Random verse", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Verse" } } } } }
+      }
+    },
+    "/v2/find/{translation}": {
+      "get": {
+        "summary": "Search verses",
+        "description": "Search for verses containing the specified text.",
+        "tags": ["Search"],
+        "parameters": [
+          { "name": "translation", "in": "path", "required": true, "schema": { "type": "string" }, "example": "YLT" },
+          { "name": "search", "in": "query", "required": true, "schema": { "type": "string" }, "example": "light" },
+          { "name": "match_case", "in": "query", "schema": { "type": "boolean", "default": false } },
+          { "name": "match_whole", "in": "query", "schema": { "type": "boolean", "default": false } },
+          { "name": "book", "in": "query", "schema": { "type": "string" }, "description": "Filter by book ID, 'ot', or 'nt'" },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 128 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exact_matches": { "type": "integer" },
+                    "total": { "type": "integer" },
+                    "results": { "type": "array", "items": { "$ref": "#/components/schemas/Verse" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-parallel-verses/": {
+      "post": {
+        "summary": "Compare verse translations",
+        "description": "Get the same verses from multiple translations for comparison.",
+        "tags": ["Bible Data"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["translations", "verses", "book", "chapter"],
+                "properties": {
+                  "translations": { "type": "array", "items": { "type": "string" }, "example": ["YLT", "KJV", "NIV"] },
+                  "verses": { "type": "array", "items": { "type": "integer" }, "example": [1, 2, 3] },
+                  "book": { "type": "integer", "example": 1 },
+                  "chapter": { "type": "integer", "example": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Parallel verses grouped by translation" } }
+      }
+    },
+    "/get-verses/": {
+      "post": {
+        "summary": "Fetch multiple verses",
+        "description": "Fetch verses from multiple locations in one request.",
+        "tags": ["Bible Data"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "translation": { "type": "string" },
+                    "book": { "type": "integer" },
+                    "chapter": { "type": "integer" },
+                    "verses": { "type": "array", "items": { "type": "integer" } }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Grouped verses" } }
+      }
+    },
+    "/dictionary-definition/{dict}/{query}/": {
+      "get": {
+        "summary": "Dictionary lookup",
+        "description": "Get Hebrew/Greek word definitions from Strong's concordance.",
+        "tags": ["Dictionary"],
+        "parameters": [
+          { "name": "dict", "in": "path", "required": true, "schema": { "type": "string", "enum": ["BDBT", "RUSD", "SCGES"] }, "example": "BDBT" },
+          { "name": "query", "in": "path", "required": true, "schema": { "type": "string" }, "example": "H7225" },
+          { "name": "extended", "in": "query", "schema": { "type": "boolean", "default": false } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dictionary definitions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "topic": { "type": "string" },
+                      "definition": { "type": "string" },
+                      "lexeme": { "type": "string" },
+                      "transliteration": { "type": "string" },
+                      "pronunciation": { "type": "string" },
+                      "short_definition": { "type": "string" },
+                      "weight": { "type": "number" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Verse": {
+        "type": "object",
+        "properties": {
+          "pk": { "type": "integer", "description": "Primary key" },
+          "translation": { "type": "string" },
+          "book": { "type": "integer" },
+          "chapter": { "type": "integer" },
+          "verse": { "type": "integer" },
+          "text": { "type": "string", "description": "Verse text (may contain HTML)" }
+        }
+      },
+      "VerseWithComment": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Verse" },
+          {
+            "type": "object",
+            "properties": {
+              "comment": { "type": "string", "description": "Commentary text (HTML)" }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "tags": [
+    { "name": "Discovery", "description": "Metadata endpoints for available translations and dictionaries" },
+    { "name": "Bible Data", "description": "Endpoints for fetching Bible text" },
+    { "name": "Search", "description": "Full-text search across translations" },
+    { "name": "Dictionary", "description": "Hebrew and Greek dictionary lookups (BDBT, RUSD, SCGES)" }
+  ]
+}
+

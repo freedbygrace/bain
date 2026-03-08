@@ -1,54 +1,27 @@
 """
 Django management command to seed the database with Bible translations.
 
-Supports two data sources:
-1. Local JSON files (from Bolls.life format) - preferred
-2. CSV files from scrollmapper/bible_databases - fallback
+Imports Bible data from local JSON files (Bolls.life format).
+JSON files are bundled in the Docker image at /app/data/translations/
 
 Usage:
-    python manage.py seed_bible                           # Import from local JSON/CSV
+    python manage.py seed_bible                           # Import all translations
     python manage.py seed_bible --translations ESV NIV    # Specific translations
     python manage.py seed_bible --json-dir /path/to/json  # Custom JSON directory
     python manage.py seed_bible --force                   # Re-import existing
 """
-import csv
 import json
-import os
-import urllib.request
 from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from bolls.models import Verses
-
-# Book name to ID mapping (for CSV import)
-BOOK_MAP = {
-    "Genesis": 1, "Exodus": 2, "Leviticus": 3, "Numbers": 4, "Deuteronomy": 5,
-    "Joshua": 6, "Judges": 7, "Ruth": 8, "I Samuel": 9, "II Samuel": 10,
-    "I Kings": 11, "II Kings": 12, "I Chronicles": 13, "II Chronicles": 14,
-    "Ezra": 15, "Nehemiah": 16, "Esther": 17, "Job": 18, "Psalms": 19,
-    "Proverbs": 20, "Ecclesiastes": 21, "Song of Solomon": 22, "Isaiah": 23,
-    "Jeremiah": 24, "Lamentations": 25, "Ezekiel": 26, "Daniel": 27,
-    "Hosea": 28, "Joel": 29, "Amos": 30, "Obadiah": 31, "Jonah": 32,
-    "Micah": 33, "Nahum": 34, "Habakkuk": 35, "Zephaniah": 36, "Haggai": 37,
-    "Zechariah": 38, "Malachi": 39, "Matthew": 40, "Mark": 41, "Luke": 42,
-    "John": 43, "Acts": 44, "Romans": 45, "I Corinthians": 46, "II Corinthians": 47,
-    "Galatians": 48, "Ephesians": 49, "Philippians": 50, "Colossians": 51,
-    "I Thessalonians": 52, "II Thessalonians": 53, "I Timothy": 54, "II Timothy": 55,
-    "Titus": 56, "Philemon": 57, "Hebrews": 58, "James": 59, "I Peter": 60,
-    "II Peter": 61, "I John": 62, "II John": 63, "III John": 64, "Jude": 65,
-    "Revelation": 66, "Revelation of John": 66,
-}
-
-# Fallback: scrollmapper CSV downloads
-BIBLE_BASE_URL = "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/formats/csv"
-SCROLLMAPPER_TRANSLATIONS = ["ASV", "BSB", "ChiSB", "KJV", "TR", "WLC", "YLT"]
 
 # Default local JSON directory (bundled in Docker image)
 DEFAULT_JSON_DIR = "/app/data/translations"
 
 
 class Command(BaseCommand):
-    help = "Seed the database with Bible translations from local JSON or CSV files"
+    help = "Seed the database with Bible translations from local JSON files"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -66,83 +39,84 @@ class Command(BaseCommand):
             default=DEFAULT_JSON_DIR,
             help=f"Directory containing JSON files (default: {DEFAULT_JSON_DIR})",
         )
-        parser.add_argument(
-            "--csv-dir",
-            default="/tmp/bible_data",
-            help="Fallback directory for CSV files",
-        )
 
     def handle(self, *args, **options):
         force = options["force"]
         json_dir = Path(options["json_dir"])
-        csv_dir = options["csv_dir"]
 
-        # Auto-discover translations from JSON directory if not specified
+        # Auto-discover translations from JSON directory
         if options["translations"]:
             translations = options["translations"]
         elif json_dir.exists():
-            translations = [f.stem for f in json_dir.glob("*.json")]
+            translations = sorted([f.stem for f in json_dir.glob("*.json")])
             if translations:
                 self.stdout.write(f"Found {len(translations)} JSON files in {json_dir}")
             else:
-                translations = SCROLLMAPPER_TRANSLATIONS
-                self.stdout.write(f"No JSON files found, using scrollmapper defaults")
+                self.stdout.write(self.style.ERROR(f"No JSON files found in {json_dir}"))
+                return
         else:
-            translations = SCROLLMAPPER_TRANSLATIONS
-            self.stdout.write(f"JSON dir not found, using scrollmapper defaults")
+            self.stdout.write(self.style.ERROR(f"JSON directory not found: {json_dir}"))
+            return
 
-        os.makedirs(csv_dir, exist_ok=True)
+        total = len(translations)
+        imported = 0
+        skipped = 0
 
-        for translation in sorted(translations):
-            self.import_translation(translation, json_dir, csv_dir, force)
+        for idx, translation in enumerate(translations, 1):
+            result = self.import_translation(translation, json_dir, force, idx, total)
+            if result == "imported":
+                imported += 1
+            elif result == "skipped":
+                skipped += 1
 
-    def import_translation(self, translation, json_dir, csv_dir, force):
-        """Import a single Bible translation from JSON or CSV."""
+        self.stdout.write("")
+        self.stdout.write(self.style.SUCCESS(
+            f"Seeding complete: {imported} imported, {skipped} skipped, {total - imported - skipped} failed"
+        ))
+
+    def import_translation(self, translation, json_dir, force, current, total):
+        """Import a single Bible translation from JSON."""
+        json_path = json_dir / f"{translation}.json"
+
+        if not json_path.exists():
+            self.stdout.write(self.style.ERROR(
+                f"[{current}/{total}] {translation}: JSON file not found"
+            ))
+            return "failed"
+
         # Check if already imported
         existing = Verses.objects.filter(translation=translation).count()
         if existing > 0 and not force:
-            self.stdout.write(
-                self.style.WARNING(f"[{translation}] Already has {existing} verses. Skipping.")
-            )
-            return
+            self.stdout.write(self.style.WARNING(
+                f"[{current}/{total}] {translation}: Already has {existing} verses. Skipping."
+            ))
+            return "skipped"
 
         if existing > 0 and force:
-            self.stdout.write(f"[{translation}] Removing {existing} existing verses...")
+            self.stdout.write(f"[{current}/{total}] {translation}: Removing {existing} existing verses...")
             Verses.objects.filter(translation=translation).delete()
 
-        # Try JSON first (Bolls.life format), then CSV (scrollmapper)
-        json_path = json_dir / f"{translation}.json"
-        csv_path = os.path.join(csv_dir, f"{translation}.csv")
-
-        if json_path.exists():
-            verses_to_create = self._parse_json(translation, json_path)
-        elif os.path.exists(csv_path):
-            verses_to_create = self._parse_csv(translation, csv_path)
-        elif translation in SCROLLMAPPER_TRANSLATIONS:
-            # Download CSV from scrollmapper
-            url = f"{BIBLE_BASE_URL}/{translation}.csv"
-            self.stdout.write(f"[{translation}] Downloading from scrollmapper...")
-            urllib.request.urlretrieve(url, csv_path)
-            verses_to_create = self._parse_csv(translation, csv_path)
-        else:
-            self.stdout.write(self.style.ERROR(f"[{translation}] No data file found"))
-            return
+        # Parse and import
+        self.stdout.write(f"[{current}/{total}] {translation}: Importing...")
+        verses_to_create = self._parse_json(translation, json_path)
 
         if not verses_to_create:
-            self.stdout.write(self.style.ERROR(f"[{translation}] No verses parsed"))
-            return
+            self.stdout.write(self.style.ERROR(
+                f"[{current}/{total}] {translation}: No verses parsed"
+            ))
+            return "failed"
 
         # Bulk create
         with transaction.atomic():
             Verses.objects.bulk_create(verses_to_create, batch_size=1000)
 
-        self.stdout.write(
-            self.style.SUCCESS(f"[{translation}] Imported {len(verses_to_create)} verses")
-        )
+        self.stdout.write(self.style.SUCCESS(
+            f"[{current}/{total}] {translation}: Imported {len(verses_to_create)} verses"
+        ))
+        return "imported"
 
     def _parse_json(self, translation, json_path):
         """Parse Bolls.life JSON format."""
-        self.stdout.write(f"[{translation}] Importing from JSON...")
         verses = []
 
         with open(json_path, "r", encoding="utf-8") as f:
@@ -159,39 +133,6 @@ class Command(BaseCommand):
                 ))
             except (ValueError, KeyError):
                 pass
-
-        return verses
-
-    def _parse_csv(self, translation, csv_path):
-        """Parse scrollmapper CSV format."""
-        self.stdout.write(f"[{translation}] Importing from CSV...")
-        verses = []
-
-        with open(csv_path, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                book_name = row.get("Book", "").strip()
-                book_id = BOOK_MAP.get(book_name)
-                if not book_id:
-                    continue
-
-                try:
-                    chapter = int(row.get("Chapter", 0))
-                    verse_num = int(row.get("Verse", 0))
-                    text = row.get("Text", "").strip()
-                    # Clean up formatting tags
-                    text = text.replace("<FI>", "").replace("<Fi>", "")
-                    text = text.replace("<FR>", "").replace("<Fr>", "")
-
-                    verses.append(Verses(
-                        translation=translation,
-                        book=book_id,
-                        chapter=chapter,
-                        verse=verse_num,
-                        text=text,
-                    ))
-                except (ValueError, KeyError):
-                    pass
 
         return verses
 

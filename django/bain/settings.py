@@ -27,14 +27,57 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "300lf8rl25%wq$cs$2^k$r-u16@58b7m%ljds
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = int(os.environ.get("DEBUG", default=0))
 
-# Something like: localhost 127.0.0.1 [::1] dev.bolls.life
-if DEBUG:
+# Allowed hosts - defaults to * for internal/self-hosted deployments
+# We rely on:
+# 1. CSRF_TRUSTED_ORIGINS for POST request protection
+# 2. Network-level security (firewall, reverse proxy)
+# Override via DJANGO_ALLOWED_HOSTS env var if needed
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(" ")
+ALLOWED_HOSTS = [h for h in ALLOWED_HOSTS if h]  # Remove empty strings
+if not ALLOWED_HOSTS:
     ALLOWED_HOSTS = ["*"]
-else:
-    ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(" ")
-CSRF_TRUSTED_ORIGINS = ["https://bolls.life", "https://dev.bolls.life"]
-if DEBUG:
-    CSRF_TRUSTED_ORIGINS.append("https://bolls.local")
+# CSRF trusted origins - configurable via environment variable
+# Default includes localhost, RFC1918 private networks, and CGNAT ranges
+# Format: space-separated list of origins with scheme (http:// or https://)
+_DEFAULT_CSRF_ORIGINS = " ".join([
+    # Production
+    "https://bolls.life",
+    "https://dev.bolls.life",
+    # Localhost
+    "http://localhost",
+    "https://localhost",
+    "http://localhost:8000",
+    "http://localhost:8080",
+    "http://localhost:8380",
+    "http://127.0.0.1",
+    "https://127.0.0.1",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:8380",
+    # RFC1918: 10.0.0.0/8
+    "http://10.0.0.1",
+    "http://10.0.0.1:8380",
+    # RFC1918: 172.16.0.0/12
+    "http://172.16.0.1",
+    "http://172.16.0.1:8380",
+    "http://172.17.0.1",
+    "http://172.17.0.1:8380",
+    # RFC1918: 192.168.0.0/16
+    "http://192.168.0.1",
+    "http://192.168.0.1:8380",
+    "http://192.168.1.1",
+    "http://192.168.1.1:8380",
+    "http://192.168.1.100",
+    "http://192.168.1.100:8380",
+    # CGNAT: 100.64.0.0/10 (Tailscale, carrier NAT)
+    "http://100.64.0.1",
+    "http://100.64.0.1:8380",
+    "http://100.100.100.100",
+    "http://100.100.100.100:8380",
+])
+
+CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", _DEFAULT_CSRF_ORIGINS).split(" ")
+CSRF_TRUSTED_ORIGINS = [o for o in CSRF_TRUSTED_ORIGINS if o]  # Remove empty strings
 
 # Application definition
 INSTALLED_APPS = [
