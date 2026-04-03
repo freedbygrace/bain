@@ -75,7 +75,7 @@ services:
   # APP - Django Backend (Pre-built from DockerHub)
   # ═══════════════════════════════════════════════════════════════════════════
   App:
-    image: 'gsoperator/bain-app:latest'
+    image: '${BAIN_APP_IMAGE:-gsoperator/bain-app}:${BAIN_APP_VERSION:-latest}'
     container_name: BAIN-APP-00001
     user: "${PUID:-0}:${PGID:-0}"
     restart: unless-stopped
@@ -149,7 +149,7 @@ services:
   # WEB - Imba Node.js Frontend (Pre-built from DockerHub)
   # ═══════════════════════════════════════════════════════════════════════════
   Web:
-    image: 'gsoperator/bain-web:latest'
+    image: '${BAIN_WEB_IMAGE:-gsoperator/bain-web}:${BAIN_WEB_VERSION:-latest}'
     container_name: BAIN-WEB-00001
     user: "${PUID:-0}:${PGID:-0}"
     restart: unless-stopped
