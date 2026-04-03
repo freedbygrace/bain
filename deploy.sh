@@ -47,7 +47,7 @@ if [[ -f .env ]]; then
 fi
 
 STACK_NAME="${STACK_NAME:-stk-bain-00001}"
-STACK_ROOT="${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME}"
+STACK_ROOT="${STACK_BINDMOUNTROOT:-/custom/docker/stacks}/${STACK_NAME}"
 APP_IMAGE="${DOCKER_USER}/bain-app:latest"
 WEB_IMAGE="${DOCKER_USER}/bain-web:latest"
 ACTION="${1:-all}"
@@ -139,10 +139,10 @@ do_deploy() {
     docker run --rm -v "${STACK_ROOT}/Web/Build:/output" "$WEB_IMAGE" sh -c "cp -r /build/. /output/ 2>/dev/null || cp -r /app/dist/. /output/ 2>/dev/null || cp -r ./dist/. /output/ 2>/dev/null || echo 'Copying all files'; cp -r . /output/"
     success "Frontend extracted"
 
-    # Start stack with registry compose
+    # Start stack with default compose (production)
     log "Starting stack..."
-    docker compose -f docker-compose.registry.yml down 2>/dev/null || true
-    docker compose -f docker-compose.registry.yml up -d
+    docker compose down 2>/dev/null || true
+    docker compose up -d
 
     # Wait for database
     log "Waiting for database to be ready..."
@@ -166,7 +166,7 @@ do_deploy() {
     log "Access: http://localhost:${BAIN_PORT:-8380}/"
     log "API Test: http://localhost:${BAIN_PORT:-8380}/get-text/YLT/1/1/"
     echo ""
-    docker compose -f docker-compose.registry.yml ps
+    docker compose ps
 }
 
 #-----------------------------------------------------------------------------
