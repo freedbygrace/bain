@@ -9,13 +9,9 @@ A self-hosted Bible application with 144 translations, 4.2M+ verses, and diction
 git clone https://github.com/freedbygrace/bain.git
 cd bain
 
-# Set required environment variables
-export STACK_BINDMOUNTROOT=/custom/docker/stacks
-export STACK_NAME=stk-bain-00001
-
-# Create volume directories
-sudo mkdir -p "${STACK_BINDMOUNTROOT}/${STACK_NAME}"/{DB,App/Static,App/Logs,Web/Build}
-sudo chmod -R 777 "${STACK_BINDMOUNTROOT}/${STACK_NAME}"
+# Generate secrets
+export SECRET_KEY=$(openssl rand -base64 64)
+export POSTGRES_PASSWORD=$(openssl rand -base64 32)
 
 # Start the stack
 docker compose up -d
@@ -46,21 +42,20 @@ Access the application at **http://localhost:8380**
 Create a `.env` file or export environment variables:
 
 ```bash
-# REQUIRED - Data persistence location
+# Secrets (REQUIRED - generate with openssl)
+export SECRET_KEY=$(openssl rand -base64 64)
+export POSTGRES_PASSWORD=$(openssl rand -base64 32)
+
+# Host port mapping (optional, default: 8380)
+BAIN_PORT=8380
+
+# Data persistence location (optional, defaults shown)
 STACK_BINDMOUNTROOT=/custom/docker/stacks
 STACK_NAME=stk-bain-00001
-
-# Host port mapping (optional)
-BAIN_PORT=8380
 
 # User/Group IDs - match your host user (optional)
 PUID=1000
 PGID=1000
-
-# Database credentials (optional - defaults shown)
-POSTGRES_USER=bain
-POSTGRES_PASSWORD=B41nD3f4ultP@ssw0rd2024
-POSTGRES_DB=bain
 ```
 
 ## Compose Files
