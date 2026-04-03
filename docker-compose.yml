@@ -254,8 +254,8 @@ configs:
             try_files $$uri =404;
           }
 
-          # Django API endpoints
-          location ~ ^/(api|swagger|admin|get-text|get-chapter|search|get-books|get-translations|get-commentaries|oauth|accounts|login|signup|history|save-bookmarks|delete-bookmarks|edit-account|delete-my-account|user-logged|download-notes|import-notes|save-compare-translations|complete|disconnect|dictionary-definition|find|v2)/ {
+          # Django API endpoints (trailing slash optional)
+          location ~ ^/(api|swagger|admin|get-text|get-chapter|search|get-books|get-translations|get-commentaries|oauth|accounts|login|signup|history|save-bookmarks|delete-bookmarks|edit-account|delete-my-account|user-logged|download-notes|import-notes|save-compare-translations|complete|disconnect|dictionary-definition|find|v2)(/|$$) {
             proxy_pass http://django;
             proxy_set_header Host $$host;
             proxy_set_header X-Real-IP $$remote_addr;
