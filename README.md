@@ -9,11 +9,28 @@ A self-hosted Bible application with 144 translations, 4.2M+ verses, and diction
 git clone https://github.com/freedbygrace/bain.git
 cd bain
 
+# Set required environment variables
+export STACK_BINDMOUNTROOT=/custom/docker/stacks
+export STACK_NAME=stk-bain-00001
+
+# Create volume directories
+sudo mkdir -p "${STACK_BINDMOUNTROOT}/${STACK_NAME}"/{DB,App/Static,App/Logs,Web/Build}
+sudo chmod -R 777 "${STACK_BINDMOUNTROOT}/${STACK_NAME}"
+
 # Start the stack
 docker compose up -d
 ```
 
 Access the application at **http://localhost:8380**
+
+## Default Login
+
+| Field | Value |
+|-------|-------|
+| **Username** | `admin` |
+| **Password** | `admin` |
+
+> ⚠️ **Change these credentials in production** via `DJANGO_SUPERUSER_USERNAME` and `DJANGO_SUPERUSER_PASSWORD` environment variables.
 
 ## Features
 
@@ -26,45 +43,52 @@ Access the application at **http://localhost:8380**
 
 ## Configuration
 
-Create a `.env` file (optional):
+Create a `.env` file or export environment variables:
 
 ```bash
-# Host port mapping
-PROXY_HTTP_PORT=8380
+# REQUIRED - Data persistence location
+STACK_BINDMOUNTROOT=/custom/docker/stacks
+STACK_NAME=stk-bain-00001
 
-# User/Group IDs (match your host user)
+# Host port mapping (optional)
+BAIN_PORT=8380
+
+# User/Group IDs - match your host user (optional)
 PUID=1000
 PGID=1000
 
-# Data persistence location
-STACK_BINDMOUNTROOT=/mnt/docker/stacks
-STACK_NAME=stk-bain-00001
-
-# Database credentials
+# Database credentials (optional - defaults shown)
 POSTGRES_USER=bain
-POSTGRES_PASSWORD=YourSecurePassword
+POSTGRES_PASSWORD=B41nD3f4ultP@ssw0rd2024
 POSTGRES_DB=bain
 ```
 
-## Deployment Options
+## Compose Files
 
-### Local Build (Development)
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | **Production** - Uses pre-built images from DockerHub |
+| `docker-compose.build.yml` | **Development** - Builds images locally from source |
+
+### Production Deployment (Default)
 
 ```bash
 docker compose up -d
 ```
 
-### Registry-Based (Production)
+### Local Build (Development)
 
 ```bash
-# Build and push images
+docker compose -f docker-compose.build.yml up -d --build
+```
+
+### Build and Push Images
+
+```bash
 export DOCKER_USER="your-username"
 export DOCKER_PAT="your-personal-access-token"
 ./deploy.sh build
 ./deploy.sh push
-
-# On target server
-docker compose -f docker-compose.registry.yml up -d
 ```
 
 ## Architecture
@@ -73,17 +97,17 @@ docker compose -f docker-compose.registry.yml up -d
 |---------|-------------|------|
 | **Proxy** | Nginx reverse proxy | 8380 (external) |
 | **App** | Django REST API | 8000 (internal) |
-| **Web** | Imba frontend builder | 3000 (internal) |
+| **Web** | Imba Node.js frontend | 3000 (internal) |
 | **DB** | PostgreSQL + pgvector | 5432 (internal) |
 
 ## Data Volumes
 
 | Path | Purpose |
 |------|---------|
-| `${STACK_BINDMOUNTROOT}/DB` | PostgreSQL data |
-| `${STACK_BINDMOUNTROOT}/App/Static` | Django static files |
-| `${STACK_BINDMOUNTROOT}/App/Logs` | Seeding logs |
-| `${STACK_BINDMOUNTROOT}/Web/Build` | Frontend build output |
+| `${STACK_BINDMOUNTROOT}/${STACK_NAME}/DB` | PostgreSQL data |
+| `${STACK_BINDMOUNTROOT}/${STACK_NAME}/App/Static` | Django static files |
+| `${STACK_BINDMOUNTROOT}/${STACK_NAME}/App/Logs` | Seeding logs |
+| `${STACK_BINDMOUNTROOT}/${STACK_NAME}/Web/Build` | Frontend build output |
 
 ## Monitoring
 
@@ -100,8 +124,8 @@ docker exec BAIN-DB-00001 psql -U bain -d bain -c "SELECT COUNT(*) FROM bolls_ve
 ## Resource Limits
 
 The App container is configured with:
-- **CPU**: 0.5 cores max
-- **Memory**: 2GB max
+- **CPU**: 1.0 cores max (configurable via `BAIN_APP_CPU_LIMIT`)
+- **Memory**: 2GB max (configurable via `BAIN_APP_MEM_LIMIT`)
 - **Seeding**: Runs with `nice -n 19` and `ionice -c 3` (lowest priority)
 
 ## Troubleshooting
@@ -117,6 +141,7 @@ docker exec BAIN-APP-00001 python manage.py seed_dictionary --force
 
 ```bash
 docker compose down -v
+sudo rm -rf "${STACK_BINDMOUNTROOT}/${STACK_NAME}"/*
 docker compose up -d
 ```
 

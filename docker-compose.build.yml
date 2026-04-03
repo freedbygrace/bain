@@ -1,18 +1,26 @@
 #=============================================================================
-# BAIN (Bolls Bible) - Registry Deployment (Pre-built Images)
-# https://github.com/Bolls-Bible/bain
+# BAIN (Bolls Bible) - Local Build Deployment
+# https://github.com/freedbygrace/bain
 #=============================================================================
 #
-# DEPLOY:
-#   ./deploy.sh deploy
+# BUILD AND RUN:
+#   docker compose -f docker-compose.build.yml up -d --build
 #
 # ENDPOINTS:
 #   - Web UI: http://localhost:${BAIN_PORT:-8380}/
 #   - API: http://localhost:${BAIN_PORT:-8380}/get-text/YLT/1/1/
 #
+# DEFAULT LOGIN:
+#   Username: admin
+#   Password: admin
+#
+# REQUIRED ENVIRONMENT VARIABLES:
+#   STACK_BINDMOUNTROOT - Base path for persistent volumes (e.g., /custom/docker/stacks)
+#   STACK_NAME          - Stack name for volume subdirectory (e.g., stk-bain-00001)
+#
 #=============================================================================
 
-name: '${STACK_NAME:-stk-bain-00001}'
+name: '${STACK_NAME}'
 
 networks:
   EXTERNAL:
@@ -26,75 +34,12 @@ networks:
     internal: true
     attachable: true
 
-configs:
-  nginx_conf:
-    content: |
-      worker_processes auto;
-      events { worker_connections 1024; }
-      http {
-        include /etc/nginx/mime.types;
-        default_type application/octet-stream;
-        sendfile on;
-        keepalive_timeout 65;
-        gzip on;
-        gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
-
-        upstream django {
-          server App:8000;
-        }
-        upstream node {
-          server Web:3000;
-        }
-
-        server {
-          listen 80;
-          server_name _;
-          client_max_body_size 100M;
-
-          # Django static files
-          location /static/ {
-            alias /app/static/;
-          }
-
-          # Imba data files (translations)
-          location ^~ /static/bolls/app/views/ {
-            alias /imba/src/data/;
-            try_files $$uri =404;
-          }
-
-          # Django API endpoints
-          location ~ ^/(api|swagger|admin|get-text|get-chapter|search|get-books|get-translations|get-commentaries|oauth|accounts|login|signup|history|save-bookmarks|delete-bookmarks|edit-account|delete-my-account|user-logged|download-notes|import-notes|save-compare-translations|complete|disconnect|dictionary-definition|find|v2)/ {
-            proxy_pass http://django;
-            proxy_set_header Host $$host;
-            proxy_set_header X-Real-IP $$remote_addr;
-            proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $$scheme;
-            proxy_read_timeout 300s;
-          }
-
-          # Imba Node.js frontend (catch-all)
-          location / {
-            proxy_pass http://node;
-            proxy_set_header Host $$host;
-            proxy_set_header X-Real-IP $$remote_addr;
-            proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $$scheme;
-          }
-
-          # Health check
-          location /health {
-            return 200 'OK';
-            add_header Content-Type text/plain;
-          }
-        }
-      }
-
 services:
   # ═══════════════════════════════════════════════════════════════════════════
   # DATABASE - PostgreSQL with pgvector
   # ═══════════════════════════════════════════════════════════════════════════
   DB:
-    image: '${POSTGRES_IMAGE:-pgvector/pgvector}:${POSTGRES_VERSION:-pg18-trixie}'
+    image: '${POSTGRES_IMAGE:-pgvector/pgvector}:${POSTGRES_VERSION:-pg17}'
     container_name: BAIN-DB-00001
     user: "${PUID:-0}:${PGID:-0}"
     restart: unless-stopped
@@ -112,7 +57,7 @@ services:
     volumes:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
-      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/DB:/var/lib/postgresql:rw"
+      - "${STACK_BINDMOUNTROOT}/${STACK_NAME}/DB:/var/lib/postgresql:rw"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bain} -d ${POSTGRES_DB:-bain}"]
       start_period: 30s
@@ -127,10 +72,13 @@ services:
       com.centurylinklabs.watchtower.enable: '${POSTGRES_ENABLEAUTOMATICUPDATES:-false}'
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # APP - Django Backend (Pre-built from DockerHub)
+  # APP - Django Backend (Local Build)
   # ═══════════════════════════════════════════════════════════════════════════
   App:
-    image: 'amote638/bain-app:latest'
+    build:
+      context: ./source/django/
+      dockerfile: Dockerfile
+    image: '${BAIN_APP_IMAGE:-bain-app}:${BAIN_APP_VERSION:-local}'
     container_name: BAIN-APP-00001
     user: "${PUID:-0}:${PGID:-0}"
     restart: unless-stopped
@@ -144,39 +92,43 @@ services:
     environment:
       DEBUG: '${DEBUG:-0}'
       SECRET_KEY: '${SECRET_KEY:-D3f4ultS3cr3tK3yTh4tMustB3Ch4ng3d1nPr0duct10n2024}'
-      # Allowed hosts (space-separated) - defaults to * for internal deployments
-      # Security is enforced by CSRF_TRUSTED_ORIGINS for POST requests
       DJANGO_ALLOWED_HOSTS: '${DJANGO_ALLOWED_HOSTS:-*}'
       SQL_ENGINE: 'django.db.backends.postgresql'
       SQL_DATABASE: '${POSTGRES_DB:-bain}'
       SQL_USER: '${POSTGRES_USER:-bain}'
       SQL_PASSWORD: '${POSTGRES_PASSWORD:-B41nD3f4ultP@ssw0rd2024}'
       SQL_HOST: 'DB'
-      SQL_PORT: '5432'
-      DATABASE: 'postgres'
-      # Admin bootstrap (defaults create user 'admin' with password 'admin' - CHANGE IN PRODUCTION)
+      SQL_PORT: '${SQL_PORT:-5432}'
+      DATABASE: '${DATABASE:-postgres}'
+      # Admin bootstrap (defaults: admin/admin - CHANGE IN PRODUCTION)
       DJANGO_SUPERUSER_USERNAME: '${DJANGO_SUPERUSER_USERNAME:-admin}'
       DJANGO_SUPERUSER_EMAIL: '${DJANGO_SUPERUSER_EMAIL:-admin@localhost}'
       DJANGO_SUPERUSER_PASSWORD: '${DJANGO_SUPERUSER_PASSWORD:-admin}'
-      # Disable sign up
       DISABLE_SIGNUP: '${DISABLE_SIGNUP:-true}'
-      # CSRF trusted origins (space-separated) - includes localhost, RFC1918, CGNAT by default
-      CSRF_TRUSTED_ORIGINS: '${CSRF_TRUSTED_ORIGINS:-http://localhost http://localhost:8000 http://localhost:8080 http://localhost:8380 http://127.0.0.1 http://127.0.0.1:8000 http://127.0.0.1:8080 http://127.0.0.1:8380 http://10.0.0.1 http://10.0.0.1:8380 http://172.16.0.1 http://172.16.0.1:8380 http://172.17.0.1 http://172.17.0.1:8380 http://192.168.0.1 http://192.168.0.1:8380 http://192.168.1.1 http://192.168.1.1:8380 http://192.168.1.100 http://192.168.1.100:8380 http://100.64.0.1 http://100.64.0.1:8380 http://100.100.100.100 http://100.100.100.100:8380}'
-      # OAuth (optional - leave empty if not using)
-      SOCIAL_AUTH_GOOGLE_OAUTH2_KEY: '${GOOGLE_OAUTH2_KEY:-}'
-      SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET: '${GOOGLE_OAUTH2_SECRET:-}'
-      SOCIAL_AUTH_GITHUB_KEY: '${GITHUB_OAUTH_KEY:-}'
-      SOCIAL_AUTH_GITHUB_SECRET: '${GITHUB_OAUTH_SECRET:-}'
-      # Email SMTP (optional - leave empty if not sending emails)
-      EMAIL_HOST_USER: '${EMAIL_HOST_USER:-}'
-      EMAIL_HOST_PASSWORD: '${EMAIL_HOST_PASSWORD:-}'
-      GEMINI_API_KEY: '${GEMINI_API_KEY:-}'
+      # CSRF trusted origins (space-separated)
+      CSRF_TRUSTED_ORIGINS: '${CSRF_TRUSTED_ORIGINS:-http://localhost http://localhost:8380 http://127.0.0.1 http://127.0.0.1:8380}'
+      # ─────────────────────────────────────────────────────────────────────────
+      # OAuth (optional - uncomment and configure if using social login)
+      # ─────────────────────────────────────────────────────────────────────────
+      # SOCIAL_AUTH_GOOGLE_OAUTH2_KEY: '${GOOGLE_OAUTH2_KEY}'
+      # SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET: '${GOOGLE_OAUTH2_SECRET}'
+      # SOCIAL_AUTH_GITHUB_KEY: '${GITHUB_OAUTH_KEY}'
+      # SOCIAL_AUTH_GITHUB_SECRET: '${GITHUB_OAUTH_SECRET}'
+      # ─────────────────────────────────────────────────────────────────────────
+      # Email SMTP (optional - uncomment and configure if sending emails)
+      # ─────────────────────────────────────────────────────────────────────────
+      # EMAIL_HOST_USER: '${EMAIL_HOST_USER}'
+      # EMAIL_HOST_PASSWORD: '${EMAIL_HOST_PASSWORD}'
+      # ─────────────────────────────────────────────────────────────────────────
+      # Gemini AI (optional)
+      # ─────────────────────────────────────────────────────────────────────────
+      # GEMINI_API_KEY: '${GEMINI_API_KEY}'
     volumes:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
-      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/App/Static:/app/static:rw"
-      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/App/Logs:/app/logs:rw"
-      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/Web/Build:/imba:ro"
+      - "${STACK_BINDMOUNTROOT}/${STACK_NAME}/App/Static:/app/static:rw"
+      - "${STACK_BINDMOUNTROOT}/${STACK_NAME}/App/Logs:/app/logs:rw"
+      - "${STACK_BINDMOUNTROOT}/${STACK_NAME}/Web/Build:/imba:ro"
     depends_on:
       DB:
         condition: service_healthy
@@ -197,10 +149,13 @@ services:
       com.centurylinklabs.watchtower.enable: '${BAIN_ENABLEAUTOMATICUPDATES:-false}'
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # WEB - Imba Node.js Frontend (Pre-built from DockerHub)
+  # WEB - Imba Frontend (Local Build)
   # ═══════════════════════════════════════════════════════════════════════════
   Web:
-    image: 'amote638/bain-web:latest'
+    build:
+      context: ./source/imba/
+      dockerfile: Dockerfile
+    image: '${BAIN_WEB_IMAGE:-bain-web}:${BAIN_WEB_VERSION:-local}'
     container_name: BAIN-WEB-00001
     user: "${PUID:-0}:${PGID:-0}"
     restart: unless-stopped
@@ -208,24 +163,17 @@ services:
     stop_grace_period: 30s
     logging:
       driver: 'local'
-    command: node server.mjs
     networks:
       INTERNAL:
     environment:
-      NODE_ENV: 'production'
-      PORT: '3000'
+      API_URL: 'http://App:8000'
     volumes:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
+      - "${STACK_BINDMOUNTROOT}/${STACK_NAME}/Web/Build:/build:rw"
     depends_on:
       App:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/ || exit 1"]
-      start_period: 15s
-      interval: 30s
-      retries: 3
-      timeout: 5s
     labels:
       com.centurylinklabs.watchtower.enable: '${BAIN_ENABLEAUTOMATICUPDATES:-false}'
 
@@ -252,11 +200,13 @@ services:
     volumes:
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
-      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/App/Static:/app/static:ro"
-      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/Web/Build:/imba:ro"
+      - "${STACK_BINDMOUNTROOT}/${STACK_NAME}/App/Static:/app/static:ro"
+      - "${STACK_BINDMOUNTROOT}/${STACK_NAME}/Web/Build:/imba:ro"
     depends_on:
-      Web:
+      App:
         condition: service_healthy
+      Web:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost/health || exit 1"]
       start_period: 15s
@@ -266,3 +216,56 @@ services:
     labels:
       com.centurylinklabs.watchtower.enable: '${NGINX_ENABLEAUTOMATICUPDATES:-false}'
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIGS - Nginx Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+configs:
+  nginx_conf:
+    content: |
+      worker_processes auto;
+      events { worker_connections 1024; }
+      http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        sendfile on;
+        keepalive_timeout 65;
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+        upstream django {
+          server App:8000;
+        }
+
+        server {
+          listen 80;
+          server_name _;
+          client_max_body_size 100M;
+
+          # Imba frontend (SPA - static files from build)
+          location / {
+            root /imba;
+            try_files $$uri $$uri/ /index.html;
+          }
+
+          # Django static files
+          location /static/ {
+            alias /app/static/;
+          }
+
+          # Django API endpoints
+          location ~ ^/(api|swagger|admin|get-text|get-chapter|search|get-books|get-translations|get-commentaries|oauth|accounts|login|signup|history|save-bookmarks|delete-bookmarks|edit-account|delete-my-account|user-logged|download-notes|import-notes|save-compare-translations|complete|disconnect|dictionary-definition|find|v2)/ {
+            proxy_pass http://django;
+            proxy_set_header Host $$host;
+            proxy_set_header X-Real-IP $$remote_addr;
+            proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $$scheme;
+            proxy_read_timeout 300s;
+          }
+
+          # Health check
+          location /health {
+            return 200 'OK';
+            add_header Content-Type text/plain;
+          }
+        }
+      }
