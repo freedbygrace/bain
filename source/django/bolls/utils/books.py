@@ -1,10 +1,16 @@
 import json
+import os
 
 from .score_search import score_search
 
 
 BOOKS = []
-with open("/imba/src/data/translations_books.json") as json_file:
+# Path to translations_books.json - baked into the Docker image at /app/data/
+_BOOKS_JSON_PATH = os.environ.get(
+    "TRANSLATIONS_BOOKS_JSON",
+    "/app/data/translations_books.json"
+)
+with open(_BOOKS_JSON_PATH) as json_file:
     BOOKS = json.load(json_file)
 
 

@@ -1,0 +1,255 @@
+#=============================================================================
+# BAIN (Bolls Bible) - Bible Reading Web Application
+# https://github.com/freedbygrace/bain
+#=============================================================================
+#
+# SETUP:
+#   Run: ./deploy.sh <dockerhub_username>
+#
+# ENDPOINTS:
+#   - Web UI: http://localhost:${BAIN_PORT:-8380}/
+#   - API: http://localhost:${BAIN_PORT:-8380}/get-text/YLT/1/1/
+#
+# OAUTH (Optional):
+#   - Configure GOOGLE_OAUTH2 and GITHUB_OAUTH vars for social login
+#
+#=============================================================================
+
+name: '${STACK_NAME:-stk-bain-00001}'
+
+networks:
+  EXTERNAL:
+    name: BAIN-EXTERNAL
+    driver: bridge
+    internal: false
+    attachable: true
+  INTERNAL:
+    name: BAIN-INTERNAL
+    driver: bridge
+    internal: true
+    attachable: true
+
+configs:
+  nginx_conf:
+    content: |
+      worker_processes auto;
+      events { worker_connections 1024; }
+      http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        sendfile on;
+        keepalive_timeout 65;
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+        upstream django {
+          server App:8000;
+        }
+
+        server {
+          listen 80;
+          server_name _;
+          client_max_body_size 100M;
+
+          # Imba frontend (SPA)
+          location / {
+            root /imba;
+            try_files $$uri $$uri/ /index.html;
+          }
+
+          # Django static files
+          location /static/ {
+            alias /app/static/;
+          }
+
+          # Django API endpoints
+          location ~ ^/(api|admin|get-text|get-chapter|search|get-books|get-commentaries|oauth|accounts)/ {
+            proxy_pass http://django;
+            proxy_set_header Host $$host;
+            proxy_set_header X-Real-IP $$remote_addr;
+            proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $$scheme;
+            proxy_read_timeout 300s;
+          }
+
+          # Health check
+          location /health {
+            return 200 'OK';
+            add_header Content-Type text/plain;
+          }
+        }
+      }
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # DATABASE - PostgreSQL with pgvector
+  # ═══════════════════════════════════════════════════════════════════════════
+  DB:
+    image: '${POSTGRES_IMAGE:-pgvector/pgvector}:${POSTGRES_VERSION:-pg18-trixie}'
+    container_name: BAIN-DB-00001
+    user: "${PUID:-0}:${PGID:-0}"
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    shm_size: 256mb
+    logging:
+      driver: 'local'
+    networks:
+      INTERNAL:
+    environment:
+      POSTGRES_USER: '${POSTGRES_USER:-bain}'
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:-B41nD3f4ultP@ssw0rd2024}'
+      POSTGRES_DB: '${POSTGRES_DB:-bain}'
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/DB:/var/lib/postgresql:rw"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bain} -d ${POSTGRES_DB:-bain}"]
+      start_period: 30s
+      interval: 10s
+      retries: 5
+      timeout: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 1gb
+    labels:
+      com.centurylinklabs.watchtower.enable: '${POSTGRES_ENABLEAUTOMATICUPDATES:-false}'
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # APP - Django Backend
+  # ═══════════════════════════════════════════════════════════════════════════
+  App:
+    build:
+      context: ./source/django/
+      dockerfile: Dockerfile
+    image: '${BAIN_APP_IMAGE:-bain-app}:${BAIN_APP_VERSION:-local}'
+    container_name: BAIN-APP-00001
+    user: "${PUID:-0}:${PGID:-0}"
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    logging:
+      driver: 'local'
+    command: gunicorn bain.wsgi:application --bind 0.0.0.0:8000 -t 300
+    networks:
+      INTERNAL:
+    environment:
+      DEBUG: '${DEBUG:-0}'
+      SECRET_KEY: '${SECRET_KEY:-D3f4ultS3cr3tK3yTh4tMustB3Ch4ng3d1nPr0duct10n2024}'
+      DJANGO_ALLOWED_HOSTS: '${DJANGO_ALLOWED_HOSTS:-*}'
+      SQL_ENGINE: 'django.db.backends.postgresql'
+      SQL_DATABASE: '${POSTGRES_DB:-bain}'
+      SQL_USER: '${POSTGRES_USER:-bain}'
+      SQL_PASSWORD: '${POSTGRES_PASSWORD:-B41nD3f4ultP@ssw0rd2024}'
+      SQL_HOST: 'DB'
+      SQL_PORT: '5432'
+      DATABASE: 'postgres'
+      # Admin bootstrap
+      DJANGO_SUPERUSER_USERNAME: '${DJANGO_SUPERUSER_USERNAME:-admin}'
+      DJANGO_SUPERUSER_EMAIL: '${DJANGO_SUPERUSER_EMAIL:-admin@localhost}'
+      DJANGO_SUPERUSER_PASSWORD: '${DJANGO_SUPERUSER_PASSWORD:-admin}'
+      # Optional OAuth
+      SOCIAL_AUTH_GOOGLE_OAUTH2_KEY: '${GOOGLE_OAUTH2_KEY:-}'
+      SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET: '${GOOGLE_OAUTH2_SECRET:-}'
+      SOCIAL_AUTH_GITHUB_KEY: '${GITHUB_OAUTH_KEY:-}'
+      SOCIAL_AUTH_GITHUB_SECRET: '${GITHUB_OAUTH_SECRET:-}'
+      # Optional Email
+      EMAIL_HOST_USER: '${EMAIL_HOST_USER:-}'
+      EMAIL_HOST_PASSWORD: '${EMAIL_HOST_PASSWORD:-}'
+      # Optional Gemini
+      GEMINI_API_KEY: '${GEMINI_API_KEY:-}'
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/App/Static:/app/static:rw"
+      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/App/Logs:/app/logs:rw"
+      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/Web/Build:/imba:ro"
+    depends_on:
+      DB:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/admin/ || curl -sf http://localhost:8000/get-books/ || exit 0"]
+      start_period: 30s
+      interval: 30s
+      retries: 3
+      timeout: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '${BAIN_APP_CPU_LIMIT:-1.0}'
+          memory: '${BAIN_APP_MEM_LIMIT:-2gb}'
+        reservations:
+          memory: 256mb
+    labels:
+      com.centurylinklabs.watchtower.enable: '${BAIN_ENABLEAUTOMATICUPDATES:-false}'
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # WEB - Imba Frontend
+  # ═══════════════════════════════════════════════════════════════════════════
+  Web:
+    build:
+      context: ./source/imba/
+      dockerfile: Dockerfile
+    image: '${BAIN_WEB_IMAGE:-bain-web}:${BAIN_WEB_VERSION:-local}'
+    container_name: BAIN-WEB-00001
+    user: "${PUID:-0}:${PGID:-0}"
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    logging:
+      driver: 'local'
+    networks:
+      INTERNAL:
+    environment:
+      API_URL: 'http://App:8000'
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/Web/Build:/build:rw"
+    depends_on:
+      App:
+        condition: service_healthy
+    labels:
+      com.centurylinklabs.watchtower.enable: '${BAIN_ENABLEAUTOMATICUPDATES:-false}'
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # PROXY - Nginx Reverse Proxy
+  # ═══════════════════════════════════════════════════════════════════════════
+  Proxy:
+    image: '${NGINX_IMAGE:-nginx}:${NGINX_VERSION:-alpine}'
+    container_name: BAIN-PROXY-00001
+    user: "${PUID:-0}:${PGID:-0}"
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    logging:
+      driver: 'local'
+    networks:
+      EXTERNAL:
+      INTERNAL:
+    ports:
+      - '${BAIN_PORT:-8380}:80'
+    configs:
+      - source: nginx_conf
+        target: /etc/nginx/nginx.conf
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/App/Static:/app/static:ro"
+      - "${STACK_BINDMOUNTROOT:-/mnt/docker/stacks}/${STACK_NAME:-stk-bain-00001}/Web/Build:/imba:ro"
+    depends_on:
+      App:
+        condition: service_healthy
+      Web:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/health || exit 1"]
+      start_period: 15s
+      interval: 30s
+      retries: 3
+      timeout: 5s
+    labels:
+      com.centurylinklabs.watchtower.enable: '${NGINX_ENABLEAUTOMATICUPDATES:-false}'
+

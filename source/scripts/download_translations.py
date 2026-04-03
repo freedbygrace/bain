@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Download Bible translations and dictionaries from Bolls.life API and save as JSON files.
+Download Bible translations from Bolls.life API and save as JSON files.
 
 These files can be committed to the repo and used for seeding the database
 without requiring network access during deployment.
@@ -10,7 +10,6 @@ Usage:
     python download_translations.py --translations ESV NIV NKJV
     python download_translations.py --all              # Download ALL translations
     python download_translations.py --list             # List available translations
-    python download_translations.py --dictionaries     # Download all dictionaries
 """
 
 import argparse
@@ -24,15 +23,10 @@ from pathlib import Path
 # Bolls.life API endpoints
 LANGUAGES_URL = "https://bolls.life/static/bolls/app/views/languages.json"
 TRANSLATION_URL = "https://bolls.life/static/translations/{translation}.json"
-DICTIONARY_URL = "https://bolls.life/get-dictionary/{dict}/"
 
-# Available dictionaries
-DICTIONARIES = ["BDBT", "RUSD", "SCGES"]
-
-# Output directories (relative to script location)
+# Output directory (relative to script location)
 SCRIPT_DIR = Path(__file__).parent
 DATA_DIR = SCRIPT_DIR.parent / "data" / "translations"
-DICT_DIR = SCRIPT_DIR.parent / "data" / "dictionaries"
 
 # Default: All English translations from Bolls.life
 ENGLISH_TRANSLATIONS = [
@@ -97,38 +91,9 @@ def download_translation(code: str, output_dir: Path) -> bool:
     return True
 
 
-def download_dictionary(code: str, output_dir: Path, force: bool = False) -> bool:
-    """Download a single dictionary and save as JSON."""
-    output_file = output_dir / f"{code}.json"
-
-    # Check if already exists
-    if output_file.exists() and not force:
-        size = output_file.stat().st_size
-        print(f"  [{code}] Already exists ({size:,} bytes) - skipping")
-        return True
-
-    url = DICTIONARY_URL.format(dict=code)
-    print(f"  [{code}] Downloading from {url}...")
-
-    data = fetch_json(url)
-    if not data:
-        print(f"  [{code}] Failed to download", file=sys.stderr)
-        return False
-
-    # Save to file
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    entry_count = len(data) if isinstance(data, list) else 0
-    file_size = output_file.stat().st_size
-    print(f"  [{code}] Saved {entry_count:,} definitions ({file_size:,} bytes)")
-    return True
-
-
 def main():
     parser = argparse.ArgumentParser(
-        description="Download Bible translations and dictionaries from Bolls.life API"
+        description="Download Bible translations from Bolls.life API"
     )
     parser.add_argument(
         "--translations", "-t", nargs="+",
@@ -141,10 +106,6 @@ def main():
     parser.add_argument(
         "--english", "-e", action="store_true", default=True,
         help="Download all English translations (default)"
-    )
-    parser.add_argument(
-        "--dictionaries", "-d", action="store_true",
-        help="Download all dictionaries (BDBT, RUSD, SCGES)"
     )
     parser.add_argument(
         "--list", "-l", action="store_true",
@@ -160,7 +121,7 @@ def main():
     )
     
     args = parser.parse_args()
-
+    
     # List mode
     if args.list:
         all_trans = get_all_translations()
@@ -169,21 +130,8 @@ def main():
             print(f"  {', '.join(codes)}")
         total = sum(len(c) for c in all_trans.values())
         print(f"\nTotal: {total} translations")
-        print(f"\nDictionaries: {', '.join(DICTIONARIES)}")
         return
-
-    # Dictionary download mode
-    if args.dictionaries:
-        print(f"Downloading {len(DICTIONARIES)} dictionaries to {DICT_DIR}")
-        print("=" * 60)
-        for i, code in enumerate(DICTIONARIES, 1):
-            print(f"[{i}/{len(DICTIONARIES)}]", end="")
-            download_dictionary(code, DICT_DIR, args.force)
-            time.sleep(0.5)
-        print("=" * 60)
-        print("Dictionary download complete!")
-        return
-
+    
     # Determine which translations to download
     if args.translations:
         to_download = args.translations
@@ -192,17 +140,17 @@ def main():
         to_download = [code for codes in all_trans.values() for code in codes]
     else:
         to_download = ENGLISH_TRANSLATIONS
-
+    
     print(f"Downloading {len(to_download)} translations to {args.output}")
     print("=" * 60)
-
+    
     # Remove existing files if force
     if args.force:
         for code in to_download:
             f = args.output / f"{code}.json"
             if f.exists():
                 f.unlink()
-
+    
     success = 0
     failed = []
     for i, code in enumerate(to_download, 1):
@@ -212,7 +160,7 @@ def main():
         else:
             failed.append(code)
         time.sleep(0.5)  # Be nice to the server
-
+    
     print("=" * 60)
     print(f"Complete: {success} downloaded, {len(failed)} failed")
     if failed:
